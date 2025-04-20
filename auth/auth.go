@@ -3,6 +3,7 @@ package auth
 import (
 	"database/sql"
 	"encoding/json"
+	"log"
 	"net/http"
 )
 
@@ -24,13 +25,14 @@ func Auth(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		var storedPass string
-		err := DB.QueryRow("SELECT password FROM users WHERE username = ?", username).Scan(&storedPass)
+		err := DB.QueryRow("SELECT password FROM users WHERE username = $1", username).Scan(&storedPass)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				http.Error(w, `{"error":"Неверные учетные данные"}`, http.StatusUnauthorized)
 				return
 			}
 			http.Error(w, `{"error":"Ошибка сервера"}`, http.StatusInternalServerError)
+			log.Printf("Error checking credentials: %v", err)
 			return
 		}
 
@@ -51,7 +53,7 @@ func SigninHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var storedPass string
-	err := DB.QueryRow("SELECT password FROM users WHERE username = ?", creds.Username).Scan(&storedPass)
+	err := DB.QueryRow("SELECT password FROM users WHERE username = $1", creds.Username).Scan(&storedPass)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -59,6 +61,7 @@ func SigninHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		http.Error(w, `{"error":"Ошибка сервера"}`, http.StatusInternalServerError)
+		log.Printf("Error during signin: %v", err)
 		return
 	}
 
@@ -79,6 +82,7 @@ func SignupHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Неверный запрос"})
+		log.Printf("Error decoding signup request: %v", err)
 		return
 	}
 
@@ -90,10 +94,11 @@ func SignupHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Проверяем существование пользователя
 	var exists bool
-	err := DB.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE username = ?)", creds.Username).Scan(&exists)
+	err := DB.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)", creds.Username).Scan(&exists)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка сервера"})
+		log.Printf("Error checking if user exists: %v", err)
 		return
 	}
 
@@ -104,10 +109,11 @@ func SignupHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Добавляем нового пользователя
-	_, err = DB.Exec("INSERT INTO users (username, password) VALUES (?, ?)", creds.Username, creds.Password)
+	_, err = DB.Exec("INSERT INTO users (username, password) VALUES ($1, $2)", creds.Username, creds.Password)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка при создании пользователя"})
+		log.Printf("Error creating user: %v", err)
 		return
 	}
 

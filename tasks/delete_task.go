@@ -7,7 +7,6 @@ import (
 )
 
 func DeleteTaskHandler(w http.ResponseWriter, r *http.Request) {
-
 	if r.Method != http.MethodDelete {
 		http.Error(w, `{"error":"Invalid request method"}`, http.StatusMethodNotAllowed)
 		return
@@ -25,7 +24,7 @@ func DeleteTaskHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := `DELETE FROM scheduler WHERE id = ?`
+	query := `DELETE FROM scheduler WHERE id = $1`
 	result, err := DB.Exec(query, id)
 	if err != nil {
 		http.Error(w, `{"error":"Failed to delete task from the database"}`, http.StatusInternalServerError)

@@ -7,11 +7,11 @@ import (
 	"os"
 
 	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 	"github.com/ljubushkin/task-manager/auth"
 	"github.com/ljubushkin/task-manager/database"
 	"github.com/ljubushkin/task-manager/date"
 	"github.com/ljubushkin/task-manager/tasks"
-	_ "modernc.org/sqlite"
 )
 
 func TaskHandler(w http.ResponseWriter, r *http.Request) {
@@ -35,25 +35,21 @@ func main() {
 		log.Fatalf("Error loading .env file: %v", err)
 	}
 
-	dbFile := os.Getenv("TODO_DBFILE")
-	if dbFile == "" {
-		dbFile = "scheduler.db"
-	}
+	// Строка подключения к PostgreSQL
+	connStr := "user=postgres dbname=mydb host=localhost sslmode=disable"
 
-	db, err := sql.Open("sqlite", dbFile)
+	db, err := sql.Open("postgres", connStr)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("Ошибка при подключении к базе данных:", err)
 	}
 	defer db.Close()
+
+	// Создание базы данных (создание таблиц и индексов)
+	database.CreateDatabase(db)
+
+	// Передаем подключение к базе данных в другие пакеты
 	tasks.DB = db
 	auth.DB = db
-
-	_, err = os.Stat(dbFile)
-	if err != nil {
-		database.CreateDatabase(tasks.DB)
-	} else {
-		log.Println("Database already exists")
-	}
 
 	http.HandleFunc("/api/signin", auth.SigninHandler)
 	http.HandleFunc("/api/signup", auth.SignupHandler)

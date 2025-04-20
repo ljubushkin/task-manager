@@ -10,7 +10,6 @@ import (
 )
 
 func AddTaskHandler(w http.ResponseWriter, r *http.Request) {
-
 	if r.Method != http.MethodPost {
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
 		return
@@ -64,16 +63,11 @@ func AddTaskHandler(w http.ResponseWriter, r *http.Request) {
 		task.Date = nextDate
 	}
 
-	query := `INSERT INTO scheduler (date, title, comment, repeat) VALUES (?, ?, ?, ?)`
-	res, err := DB.Exec(query, task.Date, task.Title, task.Comment, task.Repeat)
+	var id int
+	query := `INSERT INTO scheduler (date, title, comment, repeat) VALUES ($1, $2, $3, $4) RETURNING id`
+	err := DB.QueryRow(query, task.Date, task.Title, task.Comment, task.Repeat).Scan(&id)
 	if err != nil {
 		http.Error(w, `{"error":"Failed to add task to the database"}`, http.StatusInternalServerError)
-		return
-	}
-
-	id, err := res.LastInsertId()
-	if err != nil {
-		http.Error(w, `{"error":"Failed to retrieve task ID"}`, http.StatusInternalServerError)
 		return
 	}
 

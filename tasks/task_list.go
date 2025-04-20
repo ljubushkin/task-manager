@@ -23,19 +23,17 @@ func GetTasksHandler(w http.ResponseWriter, r *http.Request) {
 	args := []interface{}{}
 
 	if search != "" {
-
 		if parsedDate, err := time.Parse("02.01.2006", search); err == nil {
-			query += ` WHERE date = ?`
+			query += ` WHERE date = $1`
 			args = append(args, parsedDate.Format("20060102"))
 		} else {
-
-			query += ` WHERE title LIKE ? OR comment LIKE ?`
+			query += ` WHERE title LIKE $1 OR comment LIKE $2`
 			searchTerm := "%" + search + "%"
 			args = append(args, searchTerm, searchTerm)
 		}
 	}
 
-	query += ` ORDER BY date LIMIT ?`
+	query += ` ORDER BY date LIMIT $` + strconv.Itoa(len(args)+1)
 	args = append(args, tasksLimit)
 
 	rows, err := DB.Query(query, args...)

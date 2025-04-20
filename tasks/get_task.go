@@ -32,7 +32,8 @@ func GetTaskHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var task Task
-	err := DB.QueryRow("SELECT id, date, title, comment, repeat FROM scheduler WHERE id=?", id).Scan(&task.ID, &task.Date, &task.Title, &task.Comment, &task.Repeat)
+	err := DB.QueryRow("SELECT id, date, title, comment, repeat FROM scheduler WHERE id = $1", id).Scan(
+		&task.ID, &task.Date, &task.Title, &task.Comment, &task.Repeat)
 	if err == sql.ErrNoRows {
 		http.Error(w, `{"error":"Задача не найдена"}`, http.StatusNotFound)
 		return
@@ -50,7 +51,7 @@ func GetTaskHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getTaskByID(id string) (*Task, error) {
-	query := `SELECT id, date, title, comment, repeat FROM scheduler WHERE id = ?`
+	query := `SELECT id, date, title, comment, repeat FROM scheduler WHERE id = $1`
 	row := DB.QueryRow(query, id)
 
 	var task Task
@@ -114,7 +115,7 @@ func EditTaskHandler(w http.ResponseWriter, r *http.Request) {
 		task.Date = nextDate
 	}
 
-	query := `UPDATE scheduler SET date = ?, title = ?, comment = ?, repeat = ? WHERE id = ?`
+	query := `UPDATE scheduler SET date = $1, title = $2, comment = $3, repeat = $4 WHERE id = $5`
 	_, err = DB.Exec(query, task.Date, task.Title, task.Comment, task.Repeat, task.ID)
 	if err != nil {
 		http.Error(w, `{"error":"Failed to update task in the database"}`, http.StatusInternalServerError)

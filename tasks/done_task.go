@@ -29,14 +29,14 @@ func DoneTaskHandler(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 
 	var task Task
-	err := DB.QueryRow("SELECT date, repeat FROM scheduler WHERE id = ?", id).Scan(&task.Date, &task.Repeat)
+	err := DB.QueryRow("SELECT date, repeat FROM scheduler WHERE id = $1", id).Scan(&task.Date, &task.Repeat)
 	if err != nil {
 		writeJSONResponse(w, http.StatusNotFound, `{"error":"Task not found"}`)
 		return
 	}
 
 	if task.Repeat == "" {
-		if _, err := DB.Exec("DELETE FROM scheduler WHERE id = ?", id); err != nil {
+		if _, err := DB.Exec("DELETE FROM scheduler WHERE id = $1", id); err != nil {
 			writeJSONResponse(w, http.StatusInternalServerError, `{"error":"Failed to delete task"}`)
 			return
 		}
@@ -50,7 +50,7 @@ func DoneTaskHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := DB.Exec("UPDATE scheduler SET date = ? WHERE id = ?", nextDate, id); err != nil {
+	if _, err := DB.Exec("UPDATE scheduler SET date = $1 WHERE id = $2", nextDate, id); err != nil {
 		writeJSONResponse(w, http.StatusInternalServerError, `{"error":"Failed to update task date"}`)
 		return
 	}
