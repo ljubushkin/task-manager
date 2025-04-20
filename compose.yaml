@@ -1,0 +1,11 @@
+services:
+  app:
+    build: .
+    ports:
+      - "${TODO_PORT}:${TODO_PORT}"
+    environment:
+      - TODO_JWT_SECRET_KEY=${TODO_JWT_SECRET_KEY}
+      - TODO_PASSWORD=${TODO_PASSWORD}
+      - TODO_PORT=${TODO_PORT}
+      - TODO_DBFILE=${TODO_DBFILE}
+   

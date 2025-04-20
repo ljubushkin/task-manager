@@ -1,57 +1,566 @@
 <!DOCTYPE html>
-<html lang="ru" data-size="normal">
-    <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width,initial-scale=1.0" />
-        <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon" />
-        <title>Планировщик задач</title>
-        <link href="https://fonts.googleapis.com/css2?family=Raleway:ital,wght@0,400;0,600;1,400&amp;display=swap" rel="stylesheet">
-        <style>
-            :root {
-                --font-family: "Raleway"
-            }
-        </style>
-        <link rel="stylesheet" href="/css/theme.css" type="text/css" media="all" />
-        <link rel="stylesheet" href="/css/style.css" type="text/css" media="all" />
-        <script src="/js/axios.min.js"></script>
-        <script src="/js/scripts.min.js"></script>
-  </head>
-  <body>
-    <div id="app">
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Планировщик задач</title>
+    <link rel="icon" href="favicon.png" type="image/png">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Raleway', sans-serif;
+        }
+        .hidden { display: none !important; }
+        .error {
+            color: #dc3545;
+            padding: 10px;
+            background: #f8d7da;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success {
+            color: #155724;
+            padding: 10px;
+            background: #d4edda;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        #auth-section {
+            max-width: 400px;
+            margin: 50px auto;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .auth-form input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .auth-form button {
+            width: 100%;
+            padding: 10px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .switch-mode {
+            text-align: center;
+            margin-top: 15px;
+        }
+        .switch-mode button {
+            background: none;
+            border: none;
+            color: #007bff;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+        #tasks-section {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        #search-container {
+            margin-bottom: 20px;
+        }
+        #search-input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        #tasks-container {
+            border: 1px solid #eee;
+            border-radius: 8px;
+            padding: 10px;
+        }
+        .task {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 15px;
+            margin: 10px 0;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        .task.done {
+            opacity: 0.6;
+            background: #e9ecef;
+        }
+        .delete-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 25px;
+            height: 25px;
+            cursor: pointer;
+        }
+        .done-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 5px 10px;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+        .edit-btn {
+            background: #ffc107;
+            color: black;
+            border: none;
+            border-radius: 4px;
+            padding: 5px 10px;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+        .loading-spinner {
+            text-align: center;
+            padding: 20px;
+            color: #6c757d;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            min-width: 400px;
+            position: relative;
+        }
+        .close-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            cursor: pointer;
+            font-size: 20px;
+        }
+        #add-task-form {
+            display: grid;
+            gap: 10px;
+        }
+        #add-task-form input,
+        #add-task-form textarea {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div id="auth-section">
+        <form id="login-form" class="auth-form">
+            <h2>Вход</h2>
+            <div id="error-message" class="error hidden"></div>
+            <input type="text" id="username" placeholder="Логин" required>
+            <input type="password" id="password" placeholder="Пароль" required>
+            <button type="submit">Войти</button>
+            <div class="switch-mode">
+                Нет аккаунта? <button type="button" onclick="switchAuthMode(false)">Зарегистрироваться</button>
+            </div>
+        </form>
+
+        <form id="register-form" class="auth-form hidden">
+            <h2>Регистрация</h2>
+            <div id="error-message-reg" class="error hidden"></div>
+            <input type="text" id="reg-username" placeholder="Логин" required>
+            <input type="password" id="reg-password" placeholder="Пароль" required>
+            <button type="submit">Создать аккаунт</button>
+            <div class="switch-mode">
+                Есть аккаунт? <button type="button" onclick="switchAuthMode(true)">Войти</button>
+            </div>
+        </form>
     </div>
-    <svg display="none">
-        <symbol viewBox="0 0 24 24" id="calendar-month">
-            <path d="M9,10V12H7V10H9M13,10V12H11V10H13M17,10V12H15V10H17M19,3A2,2 0 0,1 21,5V19A2,2 0 0,1 19,21H5C3.89,21 3,20.1 3,19V5A2,2 0 0,1 5,3H6V1H8V3H16V1H18V3H19M19,19V8H5V19H19M9,14V16H7V14H9M13,14V16H11V14H13M17,14V16H15V14H17Z" />
-        </symbol>
-        <symbol viewBox="0 0 24 24" id="check-bold">
-            <path d="M9,20.42L2.79,14.21L5.62,11.38L9,14.77L18.88,4.88L21.71,7.71L9,20.42Z" />
-        </symbol>
-        <symbol viewBox="0 0 24 24" id="close-circle">
-            <path d="M12,2C17.53,2 22,6.47 22,12C22,17.53 17.53,22 12,22C6.47,22 2,17.53 2,12C2,6.47 6.47,2 12,2" />
-            <path fill = "#fff" d="M15.59,7L12,10.59L8.41,7L7,8.41L10.59,12L7,15.59L8.41,17L12,13.41L15.59,17L17,15.59L13.41,12L17,8.41L15.59,7Z" />
-        </symbol>
-        <symbol viewBox="0 0 576 512" id="edit">
-            <path d="M402.6 83.2l90.2 90.2c3.8 3.8 3.8 10 0 13.8L274.4 405.6l-92.8 10.3c-12.4 1.4-22.9-9.1-21.5-21.5l10.3-92.8L388.8 83.2c3.8-3.8 10-3.8 13.8 0zm162-22.9l-48.8-48.8c-15.2-15.2-39.9-15.2-55.2 0l-35.4 35.4c-3.8 3.8-3.8 10 0 13.8l90.2 90.2c3.8 3.8 10 3.8 13.8 0l35.4-35.4c15.2-15.3 15.2-40 0-55.2zM384 346.2V448H64V128h229.8c3.2 0 6.2-1.3 8.5-3.5l40-40c7.6-7.6 2.2-20.5-8.5-20.5H48C21.5 64 0 85.5 0 112v352c0 26.5 21.5 48 48 48h352c26.5 0 48-21.5 48-48V306.2c0-10.7-12.9-16-20.5-8.5l-40 40c-2.2 2.3-3.5 5.3-3.5 8.5z"/>
-        </symbol>
-        <symbol viewBox="0 0 24 24" id="help-circle">
-            <path d="M15.07,11.25L14.17,12.17C13.45,12.89 13,13.5 13,15H11V14.5C11,13.39 11.45,12.39 12.17,11.67L13.41,10.41C13.78,10.05 14,9.55 14,9C14,7.89 13.1,7 12,7A2,2 0 0,0 10,9H8A4,4 0 0,1 12,5A4,4 0 0,1 16,9C16,9.88 15.64,10.67 15.07,11.25M13,19H11V17H13M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12C22,6.47 17.5,2 12,2Z" />
-        </symbol>
-        <symbol viewBox="0 0 24 24" id="information-slab-circle">
-            <path d="M12 22C17.5 22 22 17.5 22 12C22 6.5 17.5 2 12 2C6.5 2 2 6.5 2 12C2 17.5 6.5 22 12 22M11 7H13V9H11V7M14 17H10V15H11V13H10V11H13V15H14V17Z" />
-        </symbol>
-        <symbol viewBox="0 0 24 24" id="repeat-variant">
-            <path d="M6,5.75L10.25,10H7V16H13.5L15.5,18H7A2,2 0 0,1 5,16V10H1.75L6,5.75M18,18.25L13.75,14H17V8H10.5L8.5,6H17A2,2 0 0,1 19,8V14H22.25L18,18.25Z" />
-        </symbol>
-        <symbol viewBox="0 0 24 24" id="trash-can-outline">
-            <path d="M9,3V4H4V6H5V19A2,2 0 0,0 7,21H17A2,2 0 0,0 19,19V6H20V4H15V3H9M7,6H17V19H7V6M9,8V17H11V8H9M13,8V17H15V8H13Z" />
-        </symbol>        
-    </svg>    
-  <script>
-      new app.App({
-          target: document.getElementById('app'),
-          props: {
-             }
-          })
-  </script>
-  </body>
-  </html>
+
+    <div id="tasks-section" class="hidden">
+        <button id="logout-btn" style="float:right">Выйти</button>
+        <button id="open-modal-btn" style="margin-bottom: 20px;">➕ Добавить задачу</button>
+        
+        <div id="search-container">
+            <input type="text" id="search-input" placeholder="Поиск по названию или дате (ДД.ММ.ГГГГ)">
+        </div>
+
+        <div id="tasks-container"></div>
+    </div>
+
+    <div id="task-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn">&times;</span>
+            <h2 id="modal-title">Добавить задачу</h2>
+            <form id="add-task-form">
+                <input type="text" name="title" placeholder="Название задачи" required>
+                <input type="date" name="date" required>
+                <input type="text" name="repeat" placeholder="Правило повтора (например, d 7)">
+                <textarea name="comment" placeholder="Комментарий"></textarea>
+                <button type="submit">Сохранить</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+class TaskManager {
+    constructor() {
+        this.currentUser = null;
+        this.currentPassword = null;
+        this.currentEditId = null;
+        this.searchTimeout = null;
+        this.tasks = [];
+        this.init();
+    }
+
+    init() {
+        this.bindElements();
+        this.initEventListeners();
+    }
+
+    bindElements() {
+        this.elements = {
+            authSection: document.getElementById('auth-section'),
+            tasksSection: document.getElementById('tasks-section'),
+            loginForm: document.getElementById('login-form'),
+            registerForm: document.getElementById('register-form'),
+            tasksContainer: document.getElementById('tasks-container'),
+            errorMessage: document.getElementById('error-message'),
+            errorMessageReg: document.getElementById('error-message-reg'),
+            usernameInput: document.getElementById('username'),
+            passwordInput: document.getElementById('password'),
+            logoutBtn: document.getElementById('logout-btn'),
+            searchInput: document.getElementById('search-input'),
+            modal: document.getElementById('task-modal'),
+            modalTitle: document.getElementById('modal-title'),
+            openModalBtn: document.getElementById('open-modal-btn'),
+            closeModalBtn: document.querySelector('.close-btn'),
+            addTaskForm: document.getElementById('add-task-form')
+        };
+    }
+
+    toggleUI(authenticated) {
+        this.elements.authSection.classList.toggle('hidden', authenticated);
+        this.elements.tasksSection.classList.toggle('hidden', !authenticated);
+    }
+
+    openModal() {
+        this.elements.modal.style.display = 'flex';
+    }
+
+    closeModal() {
+        this.elements.modal.style.display = 'none';
+        this.elements.addTaskForm.reset();
+        this.currentEditId = null;
+        this.elements.modalTitle.textContent = 'Добавить задачу';
+    }
+
+    async handleLogin(e) {
+        e.preventDefault();
+        const username = this.elements.usernameInput.value.trim();
+        const password = this.elements.passwordInput.value.trim();
+
+        if (!username || !password) {
+            this.showError('Заполните все поля');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/signin', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ username, password })
+            });
+
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Ошибка входа');
+            
+            this.currentUser = username;
+            this.currentPassword = password;
+            this.toggleUI(true);
+            await this.loadTasks();
+        } catch (error) {
+            this.showError(error.message);
+        }
+    }
+
+    async handleRegister(e) {
+        e.preventDefault();
+        const username = document.getElementById('reg-username').value.trim();
+        const password = document.getElementById('reg-password').value.trim();
+
+        if (!username || !password) {
+            this.showError('Заполните все поля', true);
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/signup', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ username, password })
+            });
+
+            document.getElementById('reg-username').value = '';
+            document.getElementById('reg-password').value = '';
+
+            if (!response.ok) {
+                const data = await response.json();
+                throw new Error(data.error || 'Ошибка регистрации');
+            }
+
+            const successElement = document.getElementById('error-message');
+            successElement.textContent = 'Регистрация успешна! Войдите в систему';
+            successElement.classList.remove('error', 'hidden');
+            successElement.classList.add('success');
+            
+            switchAuthMode(true);
+        } catch (error) {
+            const errorElement = document.getElementById('error-message-reg');
+            errorElement.textContent = error.message;
+            errorElement.classList.remove('success', 'hidden');
+            errorElement.classList.add('error');
+        }
+    }
+
+    logout() {
+        this.currentUser = null;
+        this.currentPassword = null;
+        this.toggleUI(false);
+    }
+
+    showError(message, isRegister = false) {
+        const element = isRegister ? this.elements.errorMessageReg : this.elements.errorMessage;
+        element.textContent = message;
+        element.classList.remove('hidden');
+        setTimeout(() => element.classList.add('hidden'), 3000);
+    }
+
+    initEventListeners() {
+        this.elements.loginForm.addEventListener('submit', e => this.handleLogin(e));
+        this.elements.registerForm.addEventListener('submit', e => this.handleRegister(e));
+        this.elements.logoutBtn.addEventListener('click', () => this.logout());
+        this.elements.openModalBtn.addEventListener('click', () => this.openModal());
+        this.elements.closeModalBtn.addEventListener('click', () => this.closeModal());
+        this.elements.addTaskForm.addEventListener('submit', e => this.handleTaskSubmit(e));
+        this.elements.searchInput.addEventListener('input', () => this.handleSearchInput());
+        window.addEventListener('click', (e) => {
+            if (e.target === this.elements.modal) this.closeModal();
+        });
+    }
+
+    handleSearchInput() {
+        // Очищаем предыдущий таймер
+        clearTimeout(this.searchTimeout);
+        
+        // Устанавливаем новый таймер с задержкой 300мс
+        this.searchTimeout = setTimeout(() => {
+            this.loadTasks(this.elements.searchInput.value.trim());
+        }, 300);
+    }
+
+    async loadTasks(searchQuery = '') {
+        try {
+            const authHeader = 'Basic ' + btoa(`${this.currentUser}:${this.currentPassword}`);
+            const url = searchQuery ? `/api/tasks?search=${encodeURIComponent(searchQuery)}` : '/api/tasks';
+            
+            const response = await fetch(url, {
+                headers: { 
+                    'Authorization': authHeader,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) throw new Error('Ошибка загрузки задач');
+            
+            const data = await response.json();
+            this.tasks = data.tasks;
+            this.renderTasks();
+        } catch (error) {
+            this.showError(error.message);
+        }
+    }
+
+    renderTasks() {
+        this.elements.tasksContainer.innerHTML = this.tasks.length > 0 
+            ? this.tasks.map(task => {
+                // Форматируем дату из YYYYMMDD в DD.MM.YYYY
+                const formattedDate = task.date 
+                    ? `${task.date.substr(6, 2)}.${task.date.substr(4, 2)}.${task.date.substr(0, 4)}`
+                    : '';
+                    
+                return `
+                    <div class="task" data-id="${task.id}">
+                        <div class="task-content">
+                            <h3>${task.title}</h3>
+                            <p>Дата: ${formattedDate}</p>
+                            ${task.comment ? `<p>Комментарий: ${task.comment}</p>` : ''}
+                        </div>
+                        <div>
+                            <button class="edit-btn">✎ Редактировать</button>
+                            <button class="done-btn">✓ Выполнить</button>
+                            <button class="delete-btn">×</button>
+                        </div>
+                    </div>
+                `;
+            }).join('')
+            : '<div class="no-tasks">Задачи не найдены</div>';
+
+        this.addTaskButtonListeners();
+    }
+
+    addTaskButtonListeners() {
+        document.querySelectorAll('.delete-btn').forEach(button => {
+            button.addEventListener('click', e => this.handleDeleteTask(e));
+        });
+
+        document.querySelectorAll('.done-btn').forEach(button => {
+            button.addEventListener('click', e => this.handleDoneTask(e));
+        });
+
+        document.querySelectorAll('.edit-btn').forEach(button => {
+            button.addEventListener('click', e => this.handleEditTask(e));
+        });
+    }
+
+    async handleDeleteTask(e) {
+        const taskElement = e.target.closest('.task');
+        const taskId = taskElement.dataset.id;
+
+        try {
+            const authHeader = 'Basic ' + btoa(`${this.currentUser}:${this.currentPassword}`);
+            const response = await fetch(`/api/task?id=${taskId}`, {
+                method: 'DELETE',
+                headers: { 
+                    'Authorization': authHeader,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) throw new Error('Ошибка удаления задачи');
+            await this.loadTasks(this.elements.searchInput.value.trim());
+        } catch (error) {
+            this.showError(error.message);
+        }
+    }
+
+    async handleDoneTask(e) {
+        const taskElement = e.target.closest('.task');
+        const taskId = taskElement.dataset.id;
+
+        try {
+            const authHeader = 'Basic ' + btoa(`${this.currentUser}:${this.currentPassword}`);
+            const response = await fetch(`/api/task/done?id=${taskId}`, {
+                method: 'POST',
+                headers: { 
+                    'Authorization': authHeader,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) throw new Error('Ошибка отметки задачи как выполненной');
+            await this.loadTasks(this.elements.searchInput.value.trim());
+        } catch (error) {
+            this.showError(error.message);
+        }
+    }
+
+    handleEditTask(e) {
+        const taskElement = e.target.closest('.task');
+        const taskId = taskElement.dataset.id;
+        const task = this.tasks.find(t => t.id === taskId);
+
+        if (!task) {
+            this.showError('Задача не найдена');
+            return;
+        }
+
+        const form = this.elements.addTaskForm;
+        form.elements.title.value = task.title;
+        
+        // Преобразование даты из формата YYYYMMDD в YYYY-MM-DD для input[type="date"]
+        const dateStr = task.date;
+        const formattedDate = dateStr ? `${dateStr.substr(0, 4)}-${dateStr.substr(4, 2)}-${dateStr.substr(6, 2)}` : '';
+        form.elements.date.value = formattedDate;
+        
+        form.elements.repeat.value = task.repeat || '';
+        form.elements.comment.value = task.comment || '';
+        this.currentEditId = taskId;
+        this.elements.modalTitle.textContent = 'Редактировать задачу';
+        this.openModal();
+    }
+
+    async handleTaskSubmit(e) {
+        e.preventDefault();
+        const form = e.target;
+        const formData = new FormData(form);
+        
+        // Преобразование даты из формата YYYY-MM-DD в YYYYMMDD
+        const dateStr = formData.get('date');
+        const formattedDate = dateStr ? dateStr.replace(/-/g, '') : '';
+        
+        const taskData = {
+            title: formData.get('title'),
+            date: formattedDate,
+            repeat: formData.get('repeat') || '',
+            comment: formData.get('comment') || ''
+        };
+
+        try {
+            const authHeader = 'Basic ' + btoa(`${this.currentUser}:${this.currentPassword}`);
+            let response;
+
+            if (this.currentEditId) {
+                taskData.id = this.currentEditId;
+                response = await fetch('/api/task', {
+                    method: 'PUT',
+                    headers: { 
+                        'Authorization': authHeader,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(taskData)
+                });
+            } else {
+                response = await fetch('/api/task', {
+                    method: 'POST',
+                    headers: { 
+                        'Authorization': authHeader,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(taskData)
+                });
+            }
+
+            if (!response.ok) throw new Error('Ошибка сохранения задачи');
+            this.closeModal();
+            await this.loadTasks(this.elements.searchInput.value.trim());
+        } catch (error) {
+            this.showError(error.message);
+        }
+    }
+}
+
+function switchAuthMode(isLogin) {
+    document.getElementById('login-form').reset();
+    document.getElementById('register-form').reset();
+    document.getElementById('error-message').classList.add('hidden');
+    document.getElementById('error-message-reg').classList.add('hidden');
+    document.getElementById('login-form').classList.toggle('hidden', !isLogin);
+    document.getElementById('register-form').classList.toggle('hidden', isLogin);
+}
+
+const taskManager = new TaskManager();
+    </script>
+</body>
+</html>
