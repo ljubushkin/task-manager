@@ -8,11 +8,13 @@ import (
 )
 
 func CreateDatabase(db *sql.DB) {
-	// Создание таблицы пользователей
+	// Создание таблицы пользователей с улучшенной структурой
 	createUsersTableSQL := `
 	CREATE TABLE IF NOT EXISTS users (
 		username TEXT PRIMARY KEY,
-		password TEXT NOT NULL
+		password TEXT NOT NULL,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);
 	`
 	_, err := db.Exec(createUsersTableSQL)
@@ -20,14 +22,23 @@ func CreateDatabase(db *sql.DB) {
 		log.Fatal("Error creating users table:", err)
 	}
 
-	// Создание таблицы для расписания
+	// Создание индекса для быстрого поиска по username
+	createUserIndexSQL := `
+	CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+	`
+	_, err = db.Exec(createUserIndexSQL)
+	if err != nil {
+		log.Fatal("Error creating users index:", err)
+	}
+
+	// Создание таблицы для расписания (оставляем как было)
 	createSchedulerTableSQL := `
 	CREATE TABLE IF NOT EXISTS scheduler (
 		id SERIAL PRIMARY KEY,
 		date VARCHAR(8) CHECK (LENGTH(date) = 8),
 		title TEXT,
 		comment TEXT,
-		"repeat" VARCHAR(128) -- Используем кавычки для зарезервированного слова "repeat"
+		"repeat" VARCHAR(128)
 	);
 	`
 	_, err = db.Exec(createSchedulerTableSQL)
@@ -44,5 +55,5 @@ func CreateDatabase(db *sql.DB) {
 		log.Fatal("Error creating index:", err)
 	}
 
-	log.Println("Tables and index created successfully")
+	log.Println("All tables and indexes created successfully")
 }

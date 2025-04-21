@@ -3,92 +3,152 @@ package auth
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/dgrijalva/jwt-go"
+	"golang.org/x/crypto/bcrypt"
 )
 
+// Credentials хранит данные пользователя для аутентификации
 type Credentials struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
-// DB - глобальная переменная для доступа к базе данных
-var DB *sql.DB
+// Claims содержит данные JWT токена
+type Claims struct {
+	Username string `json:"username"`
+	jwt.StandardClaims
+}
 
-// Auth middleware для базовой аутентификации
+var (
+	DB     *sql.DB
+	jwtKey = []byte(getJWTSecret()) // Секретный ключ из переменных окружения
+)
+
+// getJWTSecret возвращает секретный ключ из переменных окружения
+func getJWTSecret() string {
+	secret := os.Getenv("TODO_JWT_SECRET_KEY")
+	if secret == "" {
+		log.Fatal("TODO_JWT_SECRET_KEY environment variable not set")
+	}
+	return secret
+}
+
+// Auth middleware для проверки JWT токена
 func Auth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		username, password, ok := r.BasicAuth()
-		if !ok {
-			http.Error(w, `{"error":"Требуется авторизация"}`, http.StatusUnauthorized)
+		// Извлекаем и проверяем заголовок Authorization
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			sendError(w, "Authorization header required", http.StatusUnauthorized)
 			return
 		}
 
-		var storedPass string
-		err := DB.QueryRow("SELECT password FROM users WHERE username = $1", username).Scan(&storedPass)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				http.Error(w, `{"error":"Неверные учетные данные"}`, http.StatusUnauthorized)
-				return
+		// Разбираем заголовок на части
+		tokenParts := strings.Split(authHeader, " ")
+		if len(tokenParts) != 2 || tokenParts[0] != "Bearer" {
+			sendError(w, "Invalid authorization format. Expected: Bearer <token>", http.StatusUnauthorized)
+			return
+		}
+
+		tokenStr := tokenParts[1]
+		claims := &Claims{}
+
+		// Парсим токен с проверкой подписи
+		token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 			}
-			http.Error(w, `{"error":"Ошибка сервера"}`, http.StatusInternalServerError)
-			log.Printf("Error checking credentials: %v", err)
+			return jwtKey, nil
+		})
+
+		if err != nil || !token.Valid {
+			sendError(w, "Invalid or expired token", http.StatusUnauthorized)
 			return
 		}
 
-		if storedPass != password {
-			http.Error(w, `{"error":"Неверные учетные данные"}`, http.StatusUnauthorized)
+		// Проверяем срок действия токена
+		if time.Now().Unix() > claims.ExpiresAt {
+			sendError(w, "Token expired", http.StatusUnauthorized)
 			return
 		}
 
+		// Аутентификация успешна - передаем управление
 		next.ServeHTTP(w, r)
 	}
 }
 
+// SigninHandler обрабатывает запрос на вход
 func SigninHandler(w http.ResponseWriter, r *http.Request) {
 	var creds Credentials
 	if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
-		http.Error(w, `{"error":"Неверный запрос"}`, http.StatusBadRequest)
+		sendError(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	var storedPass string
-	err := DB.QueryRow("SELECT password FROM users WHERE username = $1", creds.Username).Scan(&storedPass)
+	// Ищем пользователя в базе
+	var storedHash string
+	err := DB.QueryRow("SELECT password FROM users WHERE username = $1", creds.Username).Scan(&storedHash)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(map[string]string{"error": "Неверный логин или пароль"})
+			sendError(w, "Invalid username or password", http.StatusUnauthorized)
 			return
 		}
-		http.Error(w, `{"error":"Ошибка сервера"}`, http.StatusInternalServerError)
-		log.Printf("Error during signin: %v", err)
+		log.Printf("Database error: %v", err)
+		sendError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	if storedPass != creds.Password {
-		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Неверный логин или пароль"})
+	// Сравниваем пароли
+	if err := bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(creds.Password)); err != nil {
+		sendError(w, "Invalid username or password", http.StatusUnauthorized)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	// Генерируем JWT токен
+	expirationTime := time.Now().Add(24 * time.Hour) // Токен на 24 часа
+	claims := &Claims{
+		Username: creds.Username,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: expirationTime.Unix(),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString(jwtKey)
+	if err != nil {
+		log.Printf("Token generation error: %v", err)
+		sendError(w, "Failed to generate token", http.StatusInternalServerError)
+		return
+	}
+
+	// Отправляем успешный ответ
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"token":      tokenString,
+		"token_type": "Bearer",
+		"expires_in": strconv.FormatInt(expirationTime.Unix(), 10),
+	})
 }
 
+// SignupHandler обрабатывает регистрацию новых пользователей
 func SignupHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
 	var creds Credentials
 	if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Неверный запрос"})
-		log.Printf("Error decoding signup request: %v", err)
+		sendError(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
+	// Валидация входных данных
 	if creds.Username == "" || creds.Password == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Логин и пароль обязательны"})
+		sendError(w, "Username and password are required", http.StatusBadRequest)
 		return
 	}
 
@@ -96,27 +156,39 @@ func SignupHandler(w http.ResponseWriter, r *http.Request) {
 	var exists bool
 	err := DB.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)", creds.Username).Scan(&exists)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка сервера"})
-		log.Printf("Error checking if user exists: %v", err)
+		log.Printf("Database error: %v", err)
+		sendError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	if exists {
-		w.WriteHeader(http.StatusConflict)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Пользователь уже существует"})
+		sendError(w, "Username already exists", http.StatusConflict)
 		return
 	}
 
-	// Добавляем нового пользователя
-	_, err = DB.Exec("INSERT INTO users (username, password) VALUES ($1, $2)", creds.Username, creds.Password)
+	// Хешируем пароль
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(creds.Password), bcrypt.DefaultCost)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка при создании пользователя"})
-		log.Printf("Error creating user: %v", err)
+		log.Printf("Password hashing error: %v", err)
+		sendError(w, "Failed to create user", http.StatusInternalServerError)
+		return
+	}
+
+	// Сохраняем пользователя
+	_, err = DB.Exec("INSERT INTO users (username, password) VALUES ($1, $2)", creds.Username, string(hashedPassword))
+	if err != nil {
+		log.Printf("User creation error: %v", err)
+		sendError(w, "Failed to create user", http.StatusInternalServerError)
 		return
 	}
 
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+}
+
+// sendError универсальная функция для отправки ошибок
+func sendError(w http.ResponseWriter, message string, statusCode int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
